@@ -139,34 +139,46 @@ def calculate_expanding_window_dfg(df, min_periods=252*3):
 
 def generate_signals_multiple_thresholds(df):
     """
-    Generate trading signals with multiple threshold approaches
+    Generate trading signals - CORRECTED
+    
+    Strategy: Stay LONG SPY, exit to CASH when DFG is HIGH
+    
+    High DFG = Bond market volatility > expected given equity volatility
+    This indicates potential market stress -> EXIT to cash
+    
+    Low DFG = Normal conditions -> Stay LONG SPY
     """
-    print("\nGenerating trading signals with multiple thresholds...")
+    print("\nGenerating trading signals...")
+    print("Strategy: Stay LONG, exit to CASH when DFG is HIGH")
     
     # Calculate forward returns (next 2 days average, as per paper)
     df['Ret_2day'] = (df['SPY_Return'].shift(1) + df['SPY_Return'].shift(2)) / 2
     df['Ret_2day_pct'] = df['Ret_2day'] * 100
     
-    # ==== Threshold 1: Median (50th percentile) ====
-    threshold_50 = df['DFG'].quantile(0.50)
-    df['Signal_50'] = np.where(df['DFG'] < threshold_50, 1, 0)  # Long when DFG is low
+    # ==== Strategy 1: Exit when DFG > 90th percentile ====
+    # Stay long, exit to cash only when DFG is very high (top 10%)
+    threshold_90 = df['DFG'].quantile(0.90)
+    df['Signal_90'] = np.where(df['DFG'] > threshold_90, 0, 1)  # 0=cash, 1=long
     
-    # ==== Threshold 2: Bottom tercile (33rd percentile) ====
-    threshold_33 = df['DFG'].quantile(0.33)
-    df['Signal_33'] = np.where(df['DFG'] < threshold_33, 1, 0)
+    # ==== Strategy 2: Exit when DFG > 75th percentile (top quartile) ====
+    threshold_75 = df['DFG'].quantile(0.75)
+    df['Signal_75'] = np.where(df['DFG'] > threshold_75, 0, 1)
     
-    # ==== Threshold 3: Top tercile (67th percentile) - short when high ====
+    # ==== Strategy 3: Exit when DFG > 67th percentile (top tercile) ====
     threshold_67 = df['DFG'].quantile(0.67)
-    df['Signal_67'] = np.where(df['DFG'] > threshold_67, -1, 0)  # Short when DFG is high
+    df['Signal_67'] = np.where(df['DFG'] > threshold_67, 0, 1)
     
-    # ==== Threshold 4: Z-score based ====
+    # ==== Strategy 4: Exit when DFG > median (top 50%) ====
+    threshold_50 = df['DFG'].quantile(0.50)
+    df['Signal_50'] = np.where(df['DFG'] > threshold_50, 0, 1)
+    
+    # ==== Strategy 5: Z-score based (exit when DFG > 1.5 std) ====
     dfg_rolling_mean = df['DFG'].rolling(60).mean()
     dfg_rolling_std = df['DFG'].rolling(60).std()
     df['DFG_zscore'] = (df['DFG'] - dfg_rolling_mean) / dfg_rolling_std
-    df['Signal_zscore'] = np.where(df['DFG_zscore'] < -0.5, 1, 
-                           np.where(df['DFG_zscore'] > 0.5, -1, 0))
+    df['Signal_zscore'] = np.where(df['DFG_zscore'] > 1.5, 0, 1)  # Exit when very high
     
-    print(f"Thresholds: 50th={threshold_50:.4f}, 33rd={threshold_33:.4f}, 67th={threshold_67:.4f}")
+    print(f"Thresholds (exit to cash when DFG >): 90th={threshold_90:.4f}, 75th={threshold_75:.4f}, 67th={threshold_67:.4f}, 50th={threshold_50:.4f}")
     
     return df
 
@@ -177,19 +189,25 @@ def generate_signals_multiple_thresholds(df):
 def backtest_all_strategies(df):
     """
     Backtest all strategy variants
+    
+    Signal = 1: Stay LONG SPY
+    Signal = 0: Exit to CASH
     """
     print("\nRunning backtests...")
     
-    # Strategy 1: Median threshold (long when DFG < median)
-    df['Ret_Strat_50'] = df['Signal_50'].shift(1) * df['SPY_Return']
+    # Strategy 1: Exit when DFG > 90th percentile
+    df['Ret_Strat_90'] = df['Signal_90'].shift(1) * df['SPY_Return']
     
-    # Strategy 2: Bottom tercile (long when DFG < 33rd percentile)
-    df['Ret_Strat_33'] = df['Signal_33'].shift(1) * df['SPY_Return']
+    # Strategy 2: Exit when DFG > 75th percentile
+    df['Ret_Strat_75'] = df['Signal_75'].shift(1) * df['SPY_Return']
     
-    # Strategy 3: Top tercile short (short when DFG > 67th percentile)
+    # Strategy 3: Exit when DFG > 67th percentile
     df['Ret_Strat_67'] = df['Signal_67'].shift(1) * df['SPY_Return']
     
-    # Strategy 4: Z-score based
+    # Strategy 4: Exit when DFG > median (top 50%)
+    df['Ret_Strat_50'] = df['Signal_50'].shift(1) * df['SPY_Return']
+    
+    # Strategy 5: Z-score based
     df['Ret_Strat_zscore'] = df['Signal_zscore'].shift(1) * df['SPY_Return']
     
     # Benchmark: Buy and Hold
@@ -309,6 +327,7 @@ def main():
     # Calculate metrics - ALL using same valid range for fair comparison
     print("\n" + "="*60)
     print("BACKTEST RESULTS (2012-2022, out-of-sample)")
+    print("Strategy: Stay LONG SPY, exit to CASH when DFG is HIGH")
     print("="*60)
     
     benchmark = calculate_metrics(
@@ -317,27 +336,33 @@ def main():
         valid_range=valid_range
     )
     
-    strat_50 = calculate_metrics(
-        backtest_data, 'Ret_Strat_50',
-        "Strategy: Long when DFG < Median",
+    strat_90 = calculate_metrics(
+        backtest_data, 'Ret_Strat_90',
+        "Strategy: Exit when DFG > 90th percentile (top 10%)",
         valid_range=valid_range
     )
     
-    strat_33 = calculate_metrics(
-        backtest_data, 'Ret_Strat_33',
-        "Strategy: Long when DFG < 33rd Percentile",
+    strat_75 = calculate_metrics(
+        backtest_data, 'Ret_Strat_75',
+        "Strategy: Exit when DFG > 75th percentile (top 25%)",
         valid_range=valid_range
     )
     
     strat_67 = calculate_metrics(
         backtest_data, 'Ret_Strat_67',
-        "Strategy: Short when DFG > 67th Percentile",
+        "Strategy: Exit when DFG > 67th percentile (top 33%)",
+        valid_range=valid_range
+    )
+    
+    strat_50 = calculate_metrics(
+        backtest_data, 'Ret_Strat_50',
+        "Strategy: Exit when DFG > median (top 50%)",
         valid_range=valid_range
     )
     
     strat_zscore = calculate_metrics(
         backtest_data, 'Ret_Strat_zscore',
-        "Strategy: Z-score Based",
+        "Strategy: Z-score based (exit when DFG > 1.5 std)",
         valid_range=valid_range
     )
     
