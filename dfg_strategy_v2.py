@@ -60,20 +60,43 @@ def download_data(start_date='2004-01-01', end_date='2022-12-31'):
 
 def calculate_dfgratio(data):
     """
-    Calculate DFGratio as MOVE / VIX
+    Calculate DFGratio using EXPANDING WINDOW approach
     
-    Following the paper's Table 5 Panel A:
-    DFGratio = MOVE / VIX
+    Following the paper's out-of-sample methodology:
+    - Use first 8 years (2004-2012) for initial training
+    - Then use expanding window forward
+    - This is the proper out-of-sample approach from the paper
     """
-    print("\nCalculating DFGratio (MOVE / VIX)...")
+    print("\nCalculating DFGratio with Expanding Window...")
     
     df = data.copy()
     
-    # Calculate DFGratio
-    df['DFG'] = df['MOVE'] / df['VIX']
+    # Initial training period: 8 years (matching paper)
+    min_periods = 252 * 8  # ~8 years
+    
+    df['DFG'] = np.nan
+    
+    print(f"Initial training period: {min_periods} trading days (~8 years)")
+    print("Using expanding window for out-of-sample DFG calculation...")
+    
+    for i in range(min_periods, len(df)):
+        # Use data from start to i-1 for regression
+        vix_train = df['VIX'].iloc[:i].values.reshape(-1, 1)
+        move_train = df['MOVE'].iloc[:i].values
+        
+        # Fit regression
+        reg = LinearRegression()
+        reg.fit(vix_train, move_train)
+        
+        # Predict for current period
+        predicted_move = reg.intercept_ + reg.coef_[0] * df['VIX'].iloc[i]
+        
+        # DFGratio = Actual MOVE / Predicted MOVE
+        # This gives us the divergence from expected
+        df.iloc[i, df.columns.get_loc('DFG')] = df['MOVE'].iloc[i] / predicted_move
     
     print(f"DFGratio stats: mean={df['DFG'].mean():.4f}, std={df['DFG'].std():.4f}")
-    print(f"DFGratio range: [{df['DFG'].min():.4f}, {df['DFG'].max():.4f}]")
+    print(f"Date range with valid DFG: {df[df['DFG'].notna()].index[0].date()} to {df[df['DFG'].notna()].index[-1].date()}")
     
     return df
 
@@ -159,22 +182,18 @@ def backtest_all_strategies(df):
     
     # Strategy 1: Median threshold (long when DFG < median)
     df['Ret_Strat_50'] = df['Signal_50'].shift(1) * df['SPY_Return']
-    df['Cum_Strat_50'] = (1 + df['Ret_Strat_50']).cumprod()
     
     # Strategy 2: Bottom tercile (long when DFG < 33rd percentile)
     df['Ret_Strat_33'] = df['Signal_33'].shift(1) * df['SPY_Return']
-    df['Cum_Strat_33'] = (1 + df['Ret_Strat_33']).cumprod()
     
     # Strategy 3: Top tercile short (short when DFG > 67th percentile)
     df['Ret_Strat_67'] = df['Signal_67'].shift(1) * df['SPY_Return']
-    df['Cum_Strat_67'] = (1 + df['Ret_Strat_67']).cumprod()
     
     # Strategy 4: Z-score based
     df['Ret_Strat_zscore'] = df['Signal_zscore'].shift(1) * df['SPY_Return']
-    df['Cum_Strat_zscore'] = (1 + df['Ret_Strat_zscore']).cumprod()
     
     # Benchmark: Buy and Hold
-    df['Cum_Benchmark'] = (1 + df['SPY_Return']).cumprod()
+    df['Ret_Benchmark'] = df['SPY_Return']
     
     return df
 
@@ -182,29 +201,36 @@ def backtest_all_strategies(df):
 # PERFORMANCE METRICS
 # ============================================
 
-def calculate_metrics(df, return_col, cumulative_col, name):
+def calculate_metrics(df, return_col, name, valid_range=None):
     """Calculate annualized return and drawdown"""
     
-    valid = df[[return_col, cumulative_col]].dropna()
+    # Use valid date range if provided
+    if valid_range is not None:
+        df = df.loc[valid_range[0]:valid_range[1]]
+    
+    valid = df[return_col].dropna()
     
     if len(valid) == 0:
         return None
     
-    total_return = valid[cumulative_col].iloc[-1] - 1
+    # Calculate cumulative return
+    cumulative = (1 + valid).cumprod()
+    total_return = cumulative.iloc[-1] - 1
+    
     days = len(valid)
     years = days / 252
     annualized_return = (1 + total_return) ** (1 / years) - 1
     
     # Drawdown
-    rolling_max = valid[cumulative_col].cummax()
-    drawdown = (valid[cumulative_col] - rolling_max) / rolling_max
+    rolling_max = cumulative.cummax()
+    drawdown = (cumulative - rolling_max) / rolling_max
     max_drawdown = drawdown.min()
     
     # Sharpe Ratio
-    daily_returns = valid[return_col]
-    sharpe = np.sqrt(252) * daily_returns.mean() / daily_returns.std() if daily_returns.std() > 0 else 0
+    sharpe = np.sqrt(252) * valid.mean() / valid.std() if valid.std() > 0 else 0
     
     print(f"\n{name}:")
+    print(f"  Period: {valid.index[0].date()} to {valid.index[-1].date()}")
     print(f"  Total Return: {total_return*100:.2f}%")
     print(f"  Annualized Return: {annualized_return*100:.2f}%")
     print(f"  Max Drawdown: {max_drawdown*100:.2f}%")
@@ -272,34 +298,47 @@ def main():
     # Drop NaN for metrics
     backtest_data = data.dropna()
     
-    # Calculate metrics
+    # Get valid date range for strategies (after expanding window starts)
+    valid_start = backtest_data[backtest_data['DFG'].notna()].index[0]
+    valid_end = backtest_data.index[-1]
+    valid_range = (valid_start, valid_end)
+    
+    print(f"\nValid backtest period: {valid_start.date()} to {valid_end.date()}")
+    print("(After initial 8-year training window)")
+    
+    # Calculate metrics - ALL using same valid range for fair comparison
     print("\n" + "="*60)
-    print("BACKTEST RESULTS (2004-2022)")
+    print("BACKTEST RESULTS (2012-2022, out-of-sample)")
     print("="*60)
     
     benchmark = calculate_metrics(
-        backtest_data, 'SPY_Return', 'Cum_Benchmark', 
-        "Buy & Hold SPY (Benchmark)"
+        backtest_data, 'Ret_Benchmark', 
+        "Buy & Hold SPY (Benchmark)",
+        valid_range=valid_range
     )
     
     strat_50 = calculate_metrics(
-        backtest_data, 'Ret_Strat_50', 'Cum_Strat_50',
-        "Strategy: Long when DFG < Median"
+        backtest_data, 'Ret_Strat_50',
+        "Strategy: Long when DFG < Median",
+        valid_range=valid_range
     )
     
     strat_33 = calculate_metrics(
-        backtest_data, 'Ret_Strat_33', 'Cum_Strat_33',
-        "Strategy: Long when DFG < 33rd Percentile"
+        backtest_data, 'Ret_Strat_33',
+        "Strategy: Long when DFG < 33rd Percentile",
+        valid_range=valid_range
     )
     
     strat_67 = calculate_metrics(
-        backtest_data, 'Ret_Strat_67', 'Cum_Strat_67',
-        "Strategy: Short when DFG > 67th Percentile"
+        backtest_data, 'Ret_Strat_67',
+        "Strategy: Short when DFG > 67th Percentile",
+        valid_range=valid_range
     )
     
     strat_zscore = calculate_metrics(
-        backtest_data, 'Ret_Strat_zscore', 'Cum_Strat_zscore',
-        "Strategy: Z-score Based"
+        backtest_data, 'Ret_Strat_zscore',
+        "Strategy: Z-score Based",
+        valid_range=valid_range
     )
     
     # Regression analysis
