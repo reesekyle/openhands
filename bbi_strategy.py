@@ -5,110 +5,108 @@ Based on the Vince/Williams "bloodbath sidestepping" rule from:
 
 And variation from Mark Ungewitter's tweet:
 https://x.com/mark_ungewitter/status/2030687520527130718
+
+This version calculates NYSE New Lows from actual stock data.
 """
 
 import yfinance as yf
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from datetime import datetime, timedelta
+from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
 
 # ============================================================
-# DATA DOWNLOAD FUNCTIONS
+# REPRESENTATIVE NYSE STOCKS SAMPLE
 # ============================================================
 
-def download_spy_data(start_date: str = '1990-01-01', end_date: str = None) -> pd.DataFrame:
-    """Download SPY adjusted close prices."""
+# A diversified sample of large-cap NYSE stocks to calculate new lows
+NYSE_SAMPLE = [
+    'AAPL', 'MSFT', 'AMZN', 'GOOGL', 'GOOG', 'NVDA', 'META', 'TSLA', 'BRK.B', 'UNH',
+    'JNJ', 'V', 'XOM', 'JPM', 'PG', 'MA', 'HD', 'CVX', 'LLY', 'ABBV',
+    'MRK', 'PEP', 'KO', 'COST', 'AVGO', 'TMO', 'WMT', 'MCD', 'CSCO', 'ACN',
+    'ABT', 'DHR', 'NEE', 'ADBE', 'NKE', 'TXN', 'PM', 'MS', 'UPS', 'RTX',
+    'LOW', 'HON', 'INTC', 'ORCL', 'IBM', 'SBUX', 'CAT', 'BA', 'GE', 'AMD',
+    'QCOM', 'GS', 'BLK', 'C', 'DE', 'INTU', 'AMAT', 'MDLZ', 'GILD', 'ADP',
+    'BKNG', 'ISRG', 'AXP', 'SYK', 'TJX', 'MMM', 'NOW', 'ZTS', 'REGN', 'VRTX',
+    'ADI', 'LRCX', 'MU', 'MMC', 'CB', 'CI', 'CME', 'SPGI', 'MO', 'NOC',
+    'DUK', 'PLD', 'SO', 'PNC', 'ETN', 'BSX', 'ITW', 'APD', 'ICE', 'EMR',
+    'SHW', 'NSC', 'MCK', 'EOG', 'SLB', 'USB', 'TGT', 'MCO', 'CL', 'FIS'
+]
+
+# ============================================================
+# DATA DOWNLOAD AND NYSE NEW LOWS CALCULATION
+# ============================================================
+
+def download_stock_data(tickers, start_date='1990-01-01', end_date=None):
+    """Download adjusted close prices for a list of tickers."""
     if end_date is None:
         end_date = datetime.now().strftime('%Y-%m-%d')
     
-    spy = yf.download('SPY', start=start_date, end=end_date, progress=False)
+    print(f"Downloading data for {len(tickers)} stocks...")
+    data = yf.download(tickers, start=start_date, end=end_date, progress=True, auto_adjust=True)
     
-    # Handle both old and new yfinance column formats
-    if 'Adj Close' in spy.columns:
-        spy = spy[['Adj Close']].copy()
-        spy.columns = ['close']
-    elif 'Close' in spy.columns:
-        spy = spy[['Close']].copy()
-        spy.columns = ['close']
+    # Extract close prices
+    if 'Close' in data.columns.get_level_values(0):
+        close = data['Close']
     else:
-        spy = spy[['Close']].copy()
-        spy.columns = ['close']
+        close = data
     
+    return close
+
+def calculate_nyse_new_lows_pct(price_data: pd.DataFrame, lookback: int = 252) -> pd.DataFrame:
+    """
+    Calculate the percentage of stocks hitting new 52-week lows.
+    
+    For each day, calculate what % of stocks are at their 52-week low.
+    """
+    print("Calculating NYSE new lows percentage...")
+    
+    # Calculate rolling minimum (52-week low) for each stock
+    rolling_min = price_data.rolling(window=lookback, min_periods=lookback//2).min()
+    
+    # Determine if each stock is at its 52-week low
+    at_new_low = (price_data <= rolling_min)
+    
+    # Calculate percentage of stocks at new lows
+    new_lows_pct = at_new_low.mean(axis=1) * 100
+    
+    return new_lows_pct
+
+def get_market_data_with_new_lows(start_date='1995-01-01'):
+    """
+    Get SPY data and calculate NYSE new lows from stock sample.
+    """
+    # Download SPY for returns
+    print("Downloading SPY data...")
+    spy = yf.download('SPY', start=start_date, end='2024-12-31', progress=False)
+    
+    # Handle different yfinance return formats
+    if isinstance(spy.columns, pd.MultiIndex):
+        spy_close = spy['Close']['SPY']
+    else:
+        spy_close = spy['Close']
+    
+    # Ensure it's a series with proper index
+    spy = pd.DataFrame({'close': spy_close})
     spy['returns'] = spy['close'].pct_change()
-    return spy
-
-def download_nyse_new_lows_data(start_date: str = '1990-01-01', end_date: str = None) -> pd.DataFrame:
-    """
-    Download NYSE New Lows data from FRED.
-    NYSE new lows represent the number of stocks hitting their 52-week lows.
-    """
-    if end_date is None:
-        end_date = datetime.now().strftime('%Y-%m-%d')
     
-    # Download NYSE new lows from FRED
-    # The series represents number of stocks hitting new 52-week lows
-    try:
-        # Try NYSE NLCS (New Lows) - if not available, use alternative
-        nyse_nl = yf.download('NYNPC', start=start_date, end=end_date, progress=False)
-        
-        # Also try NYSE total issues for calculating percentage
-        # Using index data as proxy - we'll estimate based on typical NYSE ~3000 stocks
-        nyse_nl = nyse_nl[['Close']].copy()
-        nyse_nl.columns = ['new_lows']
-        
-        # Estimate total NYSE issues (typically around 3000)
-        nyse_nl['total_issues'] = 3000
-        nyse_nl['new_lows_pct'] = nyse_nl['new_lows'] / nyse_nl['total_issues'] * 100
-        
-        return nyse_nl
-    except Exception as e:
-        print(f"Error downloading NYSE data: {e}")
-        # Create synthetic data for demonstration if needed
-        return None
-
-def get_market_data(start_date: str = '1990-01-01') -> pd.DataFrame:
-    """
-    Get combined SPY and NYSE new lows data.
-    Uses multiple data sources to construct the indicator.
-    """
-    # Download SPY
-    spy = download_spy_data(start_date)
+    # Download stock sample for new lows calculation
+    stock_prices = download_stock_data(NYSE_SAMPLE, start_date=start_date)
     
-    # Try to get NYSE New Lows data from FRED
-    try:
-        # NYSE New Lows Percent - using FRED data
-        nyse_nl_pct = yf.download('NYSEENL', start=start_date, progress=False)
-        if len(nyse_nl_pct) > 0:
-            if 'Close' in nyse_nl_pct.columns:
-                nyse_nl_pct = nyse_nl_pct[['Close']].copy()
-                nyse_nl_pct.columns = ['new_lows_pct']
-            else:
-                nyse_nl_pct = pd.DataFrame(index=spy.index)
-                nyse_nl_pct['new_lows_pct'] = 0
-    except Exception as e:
-        nyse_nl_pct = None
+    # Calculate new lows percentage
+    nyse_new_lows = calculate_nyse_new_lows_pct(stock_prices)
     
-    # If direct data not available, create from SPY drawdowns
-    if nyse_nl_pct is None or len(nyse_nl_pct) < 100:
-        # Use SPY directly as proxy with simulated new lows based on drawdowns
-        # This is a reasonable approximation for demonstration
-        spy_copy = spy.copy()
-        
-        # Calculate rolling drawdown as proxy for new lows
-        rolling_max = spy['close'].rolling(252, min_periods=1).max()
-        drawdown = (spy['close'] - rolling_max) / rolling_max
-        
-        # Map drawdown to new lows percentage (higher drawdown = more new lows)
-        nyse_nl_pct = pd.DataFrame(index=spy.index)
-        nyse_nl_pct['new_lows_pct'] = np.clip(-drawdown * 15, 0, 15)  # Scale factor
-    
-    # Merge data
+    # Align with SPY dates
     data = spy.copy()
-    data = data.join(nyse_nl_pct, how='left')
-    data['new_lows_pct'] = data['new_lows_pct'].fillna(0)
+    data['new_lows_pct'] = nyse_new_lows
+    data = data.dropna()
+    
+    print(f"Data range: {data.index[0].date()} to {data.index[-1].date()}")
+    print(f"Total trading days: {len(data)}")
+    print(f"Max new lows %: {data['new_lows_pct'].max():.2f}%")
+    print(f"Average new lows %: {data['new_lows_pct'].mean():.2f}%")
     
     return data
 
@@ -195,13 +193,16 @@ def calculate_performance_metrics(df: pd.DataFrame, strategy_col: str = 'strateg
     """
     Calculate annualized return and other performance metrics.
     """
+    # Get clean data (no NaN)
+    df_clean = df.dropna()
+    
     # Calculate total return
-    strategy_total_return = df[strategy_col].iloc[-1] - 1
-    benchmark_total_return = df[benchmark_col].iloc[-1] - 1
+    strategy_total_return = df_clean[strategy_col].iloc[-1] - 1
+    benchmark_total_return = df_clean[benchmark_col].iloc[-1] - 1
     
     # Calculate years of data
-    start_date = df.index[0]
-    end_date = df.index[-1]
+    start_date = df_clean.index[0]
+    end_date = df_clean.index[-1]
     years = (end_date - start_date).days / 365.25
     
     # Calculate annualized return
@@ -209,17 +210,17 @@ def calculate_performance_metrics(df: pd.DataFrame, strategy_col: str = 'strateg
     benchmark_annualized = (1 + benchmark_total_return) ** (1/years) - 1
     
     # Calculate max drawdown
-    strategy_peak = df[strategy_col].cummax()
-    strategy_drawdown = (df[strategy_col] - strategy_peak) / strategy_peak
+    strategy_peak = df_clean[strategy_col].cummax()
+    strategy_drawdown = (df_clean[strategy_col] - strategy_peak) / strategy_peak
     max_strategy_drawdown = strategy_drawdown.min()
     
-    benchmark_peak = df[benchmark_col].cummax()
-    benchmark_drawdown = (df[benchmark_col] - benchmark_peak) / benchmark_peak
+    benchmark_peak = df_clean[benchmark_col].cummax()
+    benchmark_drawdown = (df_clean[benchmark_col] - benchmark_peak) / benchmark_peak
     max_benchmark_drawdown = benchmark_drawdown.min()
     
     # Calculate volatility (annualized)
-    strategy_vol = df['strategy_returns'].std() * np.sqrt(252)
-    benchmark_vol = df['returns'].std() * np.sqrt(252)
+    strategy_vol = df_clean['strategy_returns'].std() * np.sqrt(252)
+    benchmark_vol = df_clean['returns'].std() * np.sqrt(252)
     
     # Calculate Sharpe ratio (assuming 0% risk-free rate)
     strategy_sharpe = strategy_annualized / strategy_vol if strategy_vol > 0 else 0
@@ -301,11 +302,14 @@ def plot_performance(df1: pd.DataFrame, df2: pd.DataFrame,
 def main():
     print("=" * 60)
     print("BBI (Bloodbath Bypass Indicator) Strategy Analysis")
+    print("Using actual NYSE New Lows from stock sample")
     print("=" * 60)
     
-    # Get market data
-    print("\nDownloading market data...")
-    data = get_market_data(start_date='1990-01-01')
+    # Get market data with calculated new lows
+    print("\n" + "=" * 60)
+    print("Downloading and processing market data...")
+    print("=" * 60)
+    data = get_market_data_with_new_lows(start_date='1995-01-01')
     
     # Run Strategy 1: Original Vince/Williams
     print("\n" + "=" * 60)
@@ -318,6 +322,10 @@ def main():
     for key, value in metrics1.items():
         print(f"  {key}: {value}")
     
+    # Show signal statistics
+    print(f"\nTime in market: {(df1['signal'] == 1).sum() / len(df1) * 100:.1f}%")
+    print(f"Time flat: {(df1['signal'] == 0).sum() / len(df1) * 100:.1f}%")
+    
     # Run Strategy 2: 10-Day Average Variation
     print("\n" + "=" * 60)
     print("Strategy 2: 10-Day Average (4% Threshold)")
@@ -328,6 +336,9 @@ def main():
     print("\nPerformance Metrics:")
     for key, value in metrics2.items():
         print(f"  {key}: {value}")
+    
+    print(f"\nTime in market: {(df2['signal'] == 1).sum() / len(df2) * 100:.1f}%")
+    print(f"Time flat: {(df2['signal'] == 0).sum() / len(df2) * 100:.1f}%")
     
     # Benchmark comparison
     print("\n" + "=" * 60)
