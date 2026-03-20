@@ -5,8 +5,11 @@ This strategy implements the trading approach from the paper:
 "Pre-Refunding Announcement Gains in U.S. Treasurys" by Chen Wang and Kevin Zhao
 
 The strategy:
-- Holds TLT (20+ Year Treasury Bond ETF) on TRA days (announcement day)
+- Holds TLT (20+ Year Treasury Bond ETF) on pre-TRA days (the day before the TRA)
 - Holds BIL (1-3 Month Treasury Bill ETF) on all other days
+
+TRA dates are the first Monday of February, May, August, and November.
+Pre-TRA is the trading day before each TRA.
 
 Compared to benchmark: BIL buy-and-hold
 """
@@ -19,33 +22,10 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
-def get_tra_dates(start_year=2002, end_year=2025):
-    """
-    Generate Treasury Refunding Announcement dates.
-    TRAs occur on the first Wednesday of February, May, August, and November.
-    """
-    tra_dates = []
-    
-    for year in range(start_year, end_year + 1):
-        for month in [2, 5, 8, 11]:  # Feb, May, Aug, Nov
-            first_day = datetime(year, month, 1)
-            days_until_wednesday = (2 - first_day.weekday()) % 7
-            first_wednesday = first_day + timedelta(days=days_until_wednesday)
-            tra_dates.append(first_wednesday)
-    
-    return pd.DatetimeIndex(tra_dates)
-
-def get_pre_tra_dates(tra_dates):
-    """
-    Get the trading day before each TRA (pre-TRA day).
-    """
-    pre_tra_dates = []
-    for tra_date in tra_dates:
-        pre_tra = tra_date - timedelta(days=1)
-        while pre_tra.weekday() >= 5:
-            pre_tra -= timedelta(days=1)
-        pre_tra_dates.append(pre_tra)
-    return pd.DatetimeIndex(pre_tra_dates)
+def load_tra_dates(csv_path):
+    """Load TRA dates from CSV file"""
+    df = pd.read_csv(csv_path, parse_dates=['TRA_Date', 'Pre_TRA_Date'])
+    return df
 
 def calculate_max_drawdown(cumulative_returns):
     """
@@ -142,11 +122,12 @@ def main():
     print("Pre-Refunding Announcement Trading Strategy")
     print("=" * 60)
     
-    # Step 1: Get TRA dates and pre-TRA dates
-    tra_dates = get_tra_dates(start_year=2002, end_year=2025)
-    pre_tra_dates = get_pre_tra_dates(tra_dates)
+    # Step 1: Load TRA dates from CSV
+    tra_df = load_tra_dates('/workspace/project/openhands/tra_dates.csv')
+    tra_dates = pd.DatetimeIndex(tra_df['TRA_Date'])
+    pre_tra_dates = pd.DatetimeIndex(tra_df['Pre_TRA_Date'])
     
-    print(f"\nGenerated {len(tra_dates)} TRA dates from 2002-2025")
+    print(f"\nLoaded {len(tra_dates)} TRA dates from CSV")
     print(f"First TRA: {tra_dates[0].strftime('%Y-%m-%d')}")
     print(f"Last TRA: {tra_dates[-1].strftime('%Y-%m-%d')}")
     print(f"First pre-TRA: {pre_tra_dates[0].strftime('%Y-%m-%d')}")
