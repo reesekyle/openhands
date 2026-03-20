@@ -290,8 +290,8 @@ def main():
     
     # Plot 2: Signal Timeline
     plt.subplot(2, 2, 2)
-    plt.fill_between(df.index, 0, df['Signal'], alpha=0.7, label='TRA Signal (1=TLT, 0=BIL)', color='green')
-    plt.title('Trading Signal (Hold TLT on TRA days, BIL otherwise)', fontsize=12)
+    plt.fill_between(df.index, 0, df['Signal'], alpha=0.7, label='Signal (1=TLT, 0=BIL)', color='green')
+    plt.title('Trading Signal (Hold TLT on Pre-TRA Days, BIL Otherwise)', fontsize=12)
     plt.xlabel('Date')
     plt.ylabel('Signal')
     plt.legend()
@@ -310,11 +310,11 @@ def main():
     plt.legend()
     plt.grid(True, alpha=0.3)
     
-    # Plot 4: Returns on TRA days
+    # Plot 4: Returns on pre-TRA days
     plt.subplot(2, 2, 4)
-    plt.hist(tra_days['TLT_Return'] * 100, bins=30, alpha=0.7, label='TLT on TRA Days', color='green')
+    plt.hist(tra_days['TLT_Return'] * 100, bins=30, alpha=0.7, label='TLT on Pre-TRA Days', color='green')
     plt.axvline(x=0, color='red', linestyle='--', linewidth=1)
-    plt.title('Distribution of TLT Returns on TRA Days', fontsize=12)
+    plt.title('Distribution of TLT Returns on Pre-TRA Days', fontsize=12)
     plt.xlabel('Daily Return (%)')
     plt.ylabel('Frequency')
     plt.legend()
