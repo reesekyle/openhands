@@ -1,33 +1,32 @@
 """
-FTD (Follow-Through Day) Trading Strategy
+FTD (Follow-Through Day) Trading Strategy - Enhanced Exit Analysis
 
 This strategy identifies oversold conditions using RSI, then identifies subsequent
 FTD using high IBS (Intra-Bar Strength) value and high daily return (>1%).
 
-Original 5 Entry Variations:
-1. RSI < 30 + FTD (IBS > 0.5 AND daily return > 1%)
-2. RSI < 35 + FTD (IBS > 0.7 AND daily return > 1.5%)
-3. RSI < 25 + FTD (IBS > 0.5 AND daily return > 1%)
-4. RSI crosses above 30 + FTD (RSI reversal)
-5. RSI < 40 + FTD (IBS > 0.5, any positive return)
+TOP 5 ENTRY VARIATIONS (from prior analysis) - All with FTD criteria:
+1. Entry_10: Trend Confirmation - RSI < 30 + FTD + Price above 200-day MA
+2. Entry_15: Wide Bar - RSI < 30 + FTD + Large green bar (>1.5%)
+3. Entry_7: Volume Spike - RSI < 30 + FTD + Volume > 1.5x average
+4. Entry_8: Gap Up - RSI < 30 + FTD + Gap up > 0.5%
+5. Entry_5: RSI < 40 + FTD (IBS > 0.5, any positive return)
 
-2 Exit Variations:
-1. Time-based: Hold for N bars (e.g., 5 bars)
-2. RSI threshold: Exit when RSI > 65
+EXIT VARIATIONS (10 total):
+RSI Threshold Variations (5):
+- Exit_RSI_55: Exit when RSI > 55
+- Exit_RSI_60: Exit when RSI > 60
+- Exit_RSI_65: Exit when RSI > 65
+- Exit_RSI_70: Exit when RSI > 70
+- Exit_RSI_75: Exit when RSI > 75
 
-Additional 10 Social Media Strategies (paired with FTD concept):
-6. MA Crossover: Price crosses above 50-day MA after oversold RSI
-7. Volume Spike: Volume > 1.5x average after RSI oversold
-8. Gap Up: Gap up > 0.5% after RSI oversold
-9. Support Bounce: Price bounces from daily VWAP after oversold
-10. Trend Confirmation: Price above 200-day MA after RSI oversold
-11. Momentum: RSI crosses above 40 with strongIBS (>0.7)
-12. Pullback: Price retraces to 20-day MA after FTD
-13. Swing High Break: Break of prior swing high after oversold
-14. VWAP Support: Price bounces from VWAP after oversold
-15. Wide Bar: Large green bar (>1.5%) after RSI oversold
+New Exit Methodologies (5):
+- Exit_Time_3: Hold for 3 bars
+- Exit_Time_10: Hold for 10 bars
+- Exit_RSI_Oversold: Exit when RSI goes back below 30
+- Exit_MA_Cross: Exit when price crosses below 20-day MA
+- Exit_Target: Exit when profit target of 3% is reached
 
-Total: 20 strategy variations
+Total: 50 strategy variations (5 entries x 10 exits)
 """
 
 import pandas as pd
@@ -236,15 +235,71 @@ def entry_condition_15(df):
 
 
 # Exit condition functions
-def exit_condition_time(df, hold_bars=5):
+# RSI Threshold Variatons (5)
+def exit_condition_rsi_55(df, threshold=55):
+    """Exit: RSI reaches threshold"""
+    return df['RSI'] > threshold
+
+
+def exit_condition_rsi_60(df, threshold=60):
+    """Exit: RSI reaches threshold"""
+    return df['RSI'] > threshold
+
+
+def exit_condition_rsi_65(df, threshold=65):
+    """Exit: RSI reaches threshold"""
+    return df['RSI'] > threshold
+
+
+def exit_condition_rsi_70(df, threshold=70):
+    """Exit: RSI reaches threshold"""
+    return df['RSI'] > threshold
+
+
+def exit_condition_rsi_75(df, threshold=75):
+    """Exit: RSI reaches threshold"""
+    return df['RSI'] > threshold
+
+
+# New Exit Methodologies (5)
+def exit_condition_time_3(df, hold_bars=3):
     """Exit: Hold for N bars"""
-    # This will be handled in the backtest loop
     return hold_bars
 
 
-def exit_condition_rsi(df, threshold=65):
-    """Exit: RSI reaches threshold"""
-    return df['RSI'] > threshold
+def exit_condition_time_10(df, hold_bars=10):
+    """Exit: Hold for N bars"""
+    return hold_bars
+
+
+def exit_condition_rsi_oversold(df, threshold=30):
+    """Exit: RSI goes back below oversold level"""
+    return df['RSI'] < threshold
+
+
+def exit_condition_ma_cross(df, ma_col='MA_20'):
+    """Exit: Price crosses below 20-day MA"""
+    return df['Close'] < df[ma_col]
+
+
+def exit_condition_target(df, target=0.03):
+    """Exit: Profit target reached (handled in backtest loop)"""
+    return target
+
+
+# Exit condition mapping
+EXIT_CONDITIONS = {
+    'Exit_RSI_55': {'func': exit_condition_rsi_55, 'params': {'threshold': 55}, 'type': 'rsi'},
+    'Exit_RSI_60': {'func': exit_condition_rsi_60, 'params': {'threshold': 60}, 'type': 'rsi'},
+    'Exit_RSI_65': {'func': exit_condition_rsi_65, 'params': {'threshold': 65}, 'type': 'rsi'},
+    'Exit_RSI_70': {'func': exit_condition_rsi_70, 'params': {'threshold': 70}, 'type': 'rsi'},
+    'Exit_RSI_75': {'func': exit_condition_rsi_75, 'params': {'threshold': 75}, 'type': 'rsi'},
+    'Exit_Time_3': {'func': exit_condition_time_3, 'params': {'hold_bars': 3}, 'type': 'time'},
+    'Exit_Time_10': {'func': exit_condition_time_10, 'params': {'hold_bars': 10}, 'type': 'time'},
+    'Exit_RSI_Oversold': {'func': exit_condition_rsi_oversold, 'params': {'threshold': 30}, 'type': 'rsi_low'},
+    'Exit_MA_Cross': {'func': exit_condition_ma_cross, 'params': {'ma_col': 'MA_20'}, 'type': 'ma'},
+    'Exit_Target': {'func': exit_condition_target, 'params': {'target': 0.03}, 'type': 'target'},
+}
 
 
 # Entry condition mapping
@@ -276,6 +331,7 @@ def run_backtest(df, entry_name, exit_name):
         equity_curve: Series with cumulative equity
     """
     entry_func = ENTRY_CONDITIONS[entry_name]
+    exit_config = EXIT_CONDITIONS[exit_name]
     
     # Get entry signals
     entry_signal = entry_func(df).astype(int)
@@ -283,13 +339,14 @@ def run_backtest(df, entry_name, exit_name):
     # Initialize position (0 = flat, 1 = long)
     position = pd.Series(0, index=df.index)
     
-    # Handle exit conditions
-    hold_bars = 5  # Default for time-based exit
-    rsi_threshold = 65  # Default for RSI threshold exit
+    # Get exit parameters
+    exit_type = exit_config['type']
+    exit_params = exit_config['params']
     
     in_position = False
     entry_bar = 0
     bars_held = 0
+    entry_price = 0
     
     for i in range(len(df)):
         if not in_position:
@@ -299,17 +356,36 @@ def run_backtest(df, entry_name, exit_name):
                 in_position = True
                 entry_bar = i
                 bars_held = 1
+                entry_price = df['Close'].iloc[i]
         else:
             # Currently in position - check exit conditions
             should_exit = False
             
-            if exit_name == 'Exit_Time':
+            if exit_type == 'time':
                 # Time-based exit: hold for N bars
+                hold_bars = exit_params.get('hold_bars', 5)
                 if bars_held >= hold_bars:
                     should_exit = True
-            elif exit_name == 'Exit_RSI':
+            elif exit_type == 'rsi':
                 # RSI threshold exit
-                if df['RSI'].iloc[i] > rsi_threshold:
+                threshold = exit_params.get('threshold', 65)
+                if df['RSI'].iloc[i] > threshold:
+                    should_exit = True
+            elif exit_type == 'rsi_low':
+                # RSI goes back to oversold (exit when momentum fades)
+                threshold = exit_params.get('threshold', 30)
+                if df['RSI'].iloc[i] < threshold:
+                    should_exit = True
+            elif exit_type == 'ma':
+                # MA cross exit
+                ma_col = exit_params.get('ma_col', 'MA_20')
+                if df['Close'].iloc[i] < df[ma_col].iloc[i]:
+                    should_exit = True
+            elif exit_type == 'target':
+                # Profit target exit
+                target = exit_params.get('target', 0.03)
+                current_return = (df['Close'].iloc[i] / entry_price) - 1
+                if current_return >= target:
                     should_exit = True
             
             if should_exit:
@@ -411,16 +487,18 @@ def calculate_metrics(df_trades, df_full):
 
 
 def run_all_strategies(df):
-    """Run all 20 strategy combinations (15 entries x 2 exits)"""
+    """Run all 50 strategy combinations (5 top entries x 10 exits)"""
     results = []
     equity_curves = {}
     dates = df['Date']  # Store dates for plotting
     
-    exit_names = ['Exit_Time', 'Exit_RSI']
-    # First 5 are original FTD strategies, 6-15 are social media strategies
-    entry_names = [f'Entry_{i}' for i in range(1, 16)]
+    # Top 5 entries from prior analysis (all with FTD criteria)
+    top_entries = ['Entry_10', 'Entry_15', 'Entry_7', 'Entry_8', 'Entry_5']
     
-    for entry_name in entry_names:
+    # All 10 exit variations
+    exit_names = list(EXIT_CONDITIONS.keys())
+    
+    for entry_name in top_entries:
         for exit_name in exit_names:
             strategy_name = f"{entry_name}_{exit_name}"
             print(f"Running {strategy_name}...")
@@ -492,49 +570,55 @@ def plot_performance(equity_curves, results, save_path='ftd_performance.png'):
 
 
 def create_rules_table():
-    """Create a table of all strategy rules"""
-    rules = [
-        # Original FTD strategies (1-5)
-        {'Strategy': 'Entry_1', 'Description': 'RSI < 30 (oversold) + FTD (IBS > 0.5 AND daily return > 1%)', 'Category': 'Original FTD'},
-        {'Strategy': 'Entry_2', 'Description': 'RSI < 35 + FTD (IBS > 0.7 AND daily return > 1.5%)', 'Category': 'Original FTD'},
-        {'Strategy': 'Entry_3', 'Description': 'RSI < 25 (more oversold) + FTD (IBS > 0.5 AND daily return > 1%)', 'Category': 'Original FTD'},
-        {'Strategy': 'Entry_4', 'Description': 'RSI crosses above 30 (RSI reversal) + FTD', 'Category': 'Original FTD'},
-        {'Strategy': 'Entry_5', 'Description': 'RSI < 40 + FTD (IBS > 0.5, any positive return)', 'Category': 'Original FTD'},
-        # Social media strategies (6-15)
-        {'Strategy': 'Entry_6', 'Description': 'MA Crossover - Price crosses above 50-day MA after oversold RSI', 'Category': 'Social Media'},
-        {'Strategy': 'Entry_7', 'Description': 'Volume Spike - Volume > 1.5x average after RSI oversold', 'Category': 'Social Media'},
-        {'Strategy': 'Entry_8', 'Description': 'Gap Up - Gap up > 0.5% after RSI oversold', 'Category': 'Social Media'},
-        {'Strategy': 'Entry_9', 'Description': 'Support Bounce - Price bounces from daily VWAP after oversold', 'Category': 'Social Media'},
-        {'Strategy': 'Entry_10', 'Description': 'Trend Confirmation - Price above 200-day MA after RSI oversold', 'Category': 'Social Media'},
-        {'Strategy': 'Entry_11', 'Description': 'Momentum - RSI crosses above 40 with strong IBS (>0.7)', 'Category': 'Social Media'},
-        {'Strategy': 'Entry_12', 'Description': 'Pullback - Price retraces to 20-day MA after FTD', 'Category': 'Social Media'},
-        {'Strategy': 'Entry_13', 'Description': 'Swing High Break - Break of prior swing high after oversold', 'Category': 'Social Media'},
-        {'Strategy': 'Entry_14', 'Description': 'VWAP Support - Price bounces from VWAP after oversold', 'Category': 'Social Media'},
-        {'Strategy': 'Entry_15', 'Description': 'Wide Bar - Large green bar (>1.5%) after RSI oversold', 'Category': 'Social Media'},
+    """Create a table of all strategy rules for the 50 strategies"""
+    # Top 5 entries (all with FTD criteria)
+    entry_rules = [
+        {'Strategy': 'Entry_10', 'Description': 'RSI < 30 + FTD + Price above 200-day MA (Trend Confirmation)', 'Category': 'FTD Entry'},
+        {'Strategy': 'Entry_15', 'Description': 'RSI < 30 + FTD + Large green bar (>1.5%) (Wide Bar)', 'Category': 'FTD Entry'},
+        {'Strategy': 'Entry_7', 'Description': 'RSI < 30 + FTD + Volume > 1.5x average (Volume Spike)', 'Category': 'FTD Entry'},
+        {'Strategy': 'Entry_8', 'Description': 'RSI < 30 + FTD + Gap up > 0.5% (Gap Up)', 'Category': 'FTD Entry'},
+        {'Strategy': 'Entry_5', 'Description': 'RSI < 40 + FTD (IBS > 0.5, any positive return)', 'Category': 'FTD Entry'},
     ]
     
-    # Add exit rules
-    exit_rules = [
-        {'Strategy': 'Exit_Time', 'Description': 'Hold for 5 bars then exit', 'Category': 'Exit'},
-        {'Strategy': 'Exit_RSI', 'Description': 'Exit when RSI > 65', 'Category': 'Exit'},
+    # Exit rules - RSI threshold variations (5)
+    rsi_exit_rules = [
+        {'Strategy': 'Exit_RSI_55', 'Description': 'Exit when RSI > 55', 'Category': 'RSI Threshold'},
+        {'Strategy': 'Exit_RSI_60', 'Description': 'Exit when RSI > 60', 'Category': 'RSI Threshold'},
+        {'Strategy': 'Exit_RSI_65', 'Description': 'Exit when RSI > 65', 'Category': 'RSI Threshold'},
+        {'Strategy': 'Exit_RSI_70', 'Description': 'Exit when RSI > 70', 'Category': 'RSI Threshold'},
+        {'Strategy': 'Exit_RSI_75', 'Description': 'Exit when RSI > 75', 'Category': 'RSI Threshold'},
     ]
     
-    return pd.DataFrame(rules), pd.DataFrame(exit_rules)
+    # Exit rules - new methodologies (5)
+    new_exit_rules = [
+        {'Strategy': 'Exit_Time_3', 'Description': 'Hold for 3 bars then exit', 'Category': 'Time-based'},
+        {'Strategy': 'Exit_Time_10', 'Description': 'Hold for 10 bars then exit', 'Category': 'Time-based'},
+        {'Strategy': 'Exit_RSI_Oversold', 'Description': 'Exit when RSI goes back below 30 (momentum fades)', 'Category': 'RSI Reversal'},
+        {'Strategy': 'Exit_MA_Cross', 'Description': 'Exit when price crosses below 20-day MA', 'Category': 'MA Cross'},
+        {'Strategy': 'Exit_Target', 'Description': 'Exit when profit target of 3% is reached', 'Category': 'Profit Target'},
+    ]
+    
+    return pd.DataFrame(entry_rules), pd.DataFrame(rsi_exit_rules + new_exit_rules)
 
 
-def save_to_excel(df_results, df_rules, exit_rules, filename='ftd_table.xlsx'):
+def save_to_excel(df_results, entry_rules, exit_rules, filename='ftd_table2.xlsx'):
     """Save performance and rules to Excel with formatting"""
     with pd.ExcelWriter(filename, engine='openpyxl') as writer:
-        # Write performance sheet
-        df_results.to_excel(writer, sheet_name='Perf', index=False)
+        # Write performance sheet (sorted by profit factor descending)
+        df_results_sorted = df_results.sort_values('Profit_Factor', ascending=False)
+        df_results_sorted.to_excel(writer, sheet_name='Perf', index=False)
         
-        # Write rules sheet
-        df_rules.to_excel(writer, sheet_name='Rules', index=False)
+        # Write entry rules sheet
+        entry_rules.to_excel(writer, sheet_name='Entries', index=False)
+        
+        # Write exit rules sheet
+        exit_rules.to_excel(writer, sheet_name='Exits', index=False)
         
         # Get workbook and worksheets
         workbook = writer.book
         perf_sheet = writer.sheets['Perf']
-        rules_sheet = writer.sheets['Rules']
+        entry_sheet = writer.sheets['Entries']
+        exit_sheet = writer.sheets['Exits']
         
         # Format Performance sheet
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -550,21 +634,31 @@ def save_to_excel(df_results, df_rules, exit_rules, filename='ftd_table.xlsx'):
             cell.alignment = header_alignment
         
         # Adjust column widths
-        perf_sheet.column_dimensions['A'].width = 25  # Strategy
+        perf_sheet.column_dimensions['A'].width = 30  # Strategy
         perf_sheet.column_dimensions['B'].width = 12  # Num_Trades
         perf_sheet.column_dimensions['C'].width = 14  # Total_Return
         perf_sheet.column_dimensions['D'].width = 14  # Profit_Factor
         perf_sheet.column_dimensions['E'].width = 12  # Win_Rate
         
-        # Format Rules sheet
-        for cell in rules_sheet[1]:
+        # Format Entry Rules sheet
+        for cell in entry_sheet[1]:
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = header_alignment
         
-        rules_sheet.column_dimensions['A'].width = 15  # Strategy
-        rules_sheet.column_dimensions['B'].width = 70  # Description
-        rules_sheet.column_dimensions['C'].width = 15  # Category
+        entry_sheet.column_dimensions['A'].width = 15
+        entry_sheet.column_dimensions['B'].width = 75
+        entry_sheet.column_dimensions['C'].width = 15
+        
+        # Format Exit Rules sheet
+        for cell in exit_sheet[1]:
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+        
+        exit_sheet.column_dimensions['A'].width = 20
+        exit_sheet.column_dimensions['B'].width = 60
+        exit_sheet.column_dimensions['C'].width = 18
         
         # Add borders to cells
         thin_border = Border(
@@ -578,7 +672,11 @@ def save_to_excel(df_results, df_rules, exit_rules, filename='ftd_table.xlsx'):
             for cell in row:
                 cell.border = thin_border
         
-        for row in rules_sheet.iter_rows(min_row=2, max_row=rules_sheet.max_row, min_col=1, max_col=3):
+        for row in entry_sheet.iter_rows(min_row=2, max_row=entry_sheet.max_row, min_col=1, max_col=3):
+            for cell in row:
+                cell.border = thin_border
+        
+        for row in exit_sheet.iter_rows(min_row=2, max_row=exit_sheet.max_row, min_col=1, max_col=3):
             for cell in row:
                 cell.border = thin_border
     
@@ -587,7 +685,7 @@ def save_to_excel(df_results, df_rules, exit_rules, filename='ftd_table.xlsx'):
 
 def main():
     print("=" * 60)
-    print("FTD (Follow-Through Day) Trading Strategy Analysis")
+    print("FTD Strategy - Enhanced Exit Analysis (50 strategies)")
     print("=" * 60)
     
     # Download data
@@ -596,21 +694,22 @@ def main():
     # Run all strategies
     results, equity_curves = run_all_strategies(df)
     
-    # Create and display performance table
+    # Create and display performance table (sorted by profit factor)
     df_results = create_performance_table(results)
+    df_results_by_pf = df_results.sort_values('Profit_Factor', ascending=False)
     print("\n" + "=" * 60)
-    print("Performance Table (sorted by Total Return)")
+    print("Performance Table (sorted by Profit Factor)")
     print("=" * 60)
-    print(df_results.to_string(index=False))
+    print(df_results_by_pf.to_string(index=False))
     
     # Create rules tables
-    df_rules, exit_rules = create_rules_table()
+    entry_rules, exit_rules = create_rules_table()
     
-    # Save to Excel
-    save_to_excel(df_results, df_rules, exit_rules, 'ftd_table.xlsx')
+    # Save to Excel (ftd_table2.xlsx)
+    save_to_excel(df_results, entry_rules, exit_rules, 'ftd_table2.xlsx')
     
-    # Create performance plot (top 5 by profit factor)
-    plot_performance(equity_curves, results, 'ftd_performance.png')
+    # Create performance plot (top 5 by profit factor) - performance2.png
+    plot_performance(equity_curves, results, 'performance2.png')
     
     print("\n" + "=" * 60)
     print("Analysis Complete!")
