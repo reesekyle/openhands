@@ -708,8 +708,8 @@ def main():
     # Save to Excel (ftd_table2.xlsx)
     save_to_excel(df_results, entry_rules, exit_rules, 'ftd_table2.xlsx')
     
-    # Create performance plot (top 5 by profit factor) - performance2.png
-    plot_performance(equity_curves, results, 'performance2.png')
+    # Create performance plot (top 5 by profit factor) - ftd_performance2.png
+    plot_performance(equity_curves, results, 'ftd_performance2.png')
     
     print("\n" + "=" * 60)
     print("Analysis Complete!")
