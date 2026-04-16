@@ -455,21 +455,32 @@ def create_performance_table(results):
     return df_results
 
 
-def plot_performance(equity_curves, save_path='ftd_performance.png'):
-    """Create performance plot with log scale and date x-axis"""
+def plot_performance(equity_curves, results, save_path='ftd_performance.png'):
+    """Create performance plot with log scale and date x-axis - top 5 by profit factor"""
+    # Get results and filter for meaningful trades (>= 10 trades)
+    df_results = pd.DataFrame(results)
+    df_filtered = df_results[df_results['Num_Trades'] >= 10].copy()
+    
+    # Replace inf with a large number for sorting
+    df_filtered['Profit_Factor'] = df_filtered['Profit_Factor'].replace(float('inf'), 999)
+    
+    # Get top 5 strategies by profit factor
+    top_5 = df_filtered.nlargest(5, 'Profit_Factor')['Strategy'].tolist()
+    
     plt.figure(figsize=(14, 8))
     
     # Use log scale for y-axis
     plt.yscale('log')
     
-    # Plot each strategy with dates on x-axis
+    # Plot only top 5 strategies
     for name, curve in equity_curves.items():
-        plt.plot(curve.index, curve.values, label=name, linewidth=1.5)
+        if name in top_5:
+            plt.plot(curve.index, curve.values, label=name, linewidth=1.5)
     
     plt.xlabel('Date', fontsize=12)
     plt.ylabel('Cumulative Return (Log Scale)', fontsize=12)
-    plt.title('FTD Strategy Performance - All 20 Variations', fontsize=14)
-    plt.legend(loc='upper left', fontsize=8, ncol=2)
+    plt.title('FTD Strategy Performance - Top 5 by Profit Factor', fontsize=14)
+    plt.legend(loc='upper left', fontsize=10)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     
@@ -477,6 +488,7 @@ def plot_performance(equity_curves, save_path='ftd_performance.png'):
     plt.close()
     
     print(f"Performance plot saved to {save_path}")
+    print(f"Top 5 strategies by Profit Factor (min 10 trades): {top_5}")
 
 
 def create_rules_table():
@@ -597,8 +609,8 @@ def main():
     # Save to Excel
     save_to_excel(df_results, df_rules, exit_rules, 'ftd_table.xlsx')
     
-    # Create performance plot
-    plot_performance(equity_curves, 'ftd_performance.png')
+    # Create performance plot (top 5 by profit factor)
+    plot_performance(equity_curves, results, 'ftd_performance.png')
     
     print("\n" + "=" * 60)
     print("Analysis Complete!")
