@@ -190,7 +190,15 @@ def entry_condition_9(df):
 
 
 def entry_condition_10(df):
-    """Entry 10: Trend Confirmation - Price above 200-day MA after RSI oversold"""
+    """Entry 10: Trend Confirmation - Price above 200-day MA after RSI oversold + FTD"""
+    rsi_oversold = df['RSI'] < 30
+    ftd = (df['IBS'] > 0.5) & (df['Daily_Return'] > 0.01)
+    above_ma200 = df['Close'] > df['MA_200']
+    return rsi_oversold & ftd & above_ma200
+
+
+def entry_condition_10_no_ftd(df):
+    """Entry 10 No FTD: Trend Confirmation - Price above 200-day MA after RSI oversold (NO FTD)"""
     rsi_oversold = df['RSI'] < 30
     above_ma200 = df['Close'] > df['MA_200']
     return rsi_oversold & above_ma200
@@ -307,6 +315,7 @@ ENTRY_CONDITIONS = {
     'Entry_8': entry_condition_8,
     'Entry_9': entry_condition_9,
     'Entry_10': entry_condition_10,
+    'Entry_10_No_FTD': entry_condition_10_no_ftd,
     'Entry_11': entry_condition_11,
     'Entry_12': entry_condition_12,
     'Entry_13': entry_condition_13,
@@ -669,6 +678,49 @@ def save_to_excel(df_results, entry_rules, exit_rules, filename='ftd_table2.xlsx
     print(f"Excel file saved to {filename}")
 
 
+def run_comparison(df):
+    """Run comparison between Entry_10 with and without FTD"""
+    print("\n" + "=" * 60)
+    print("FTD Comparison: Entry_10_Exit_RSI_75 with vs without FTD")
+    print("=" * 60)
+    
+    # Run with FTD
+    df_with_ftd, trades_with_ftd = run_backtest(df, 'Entry_10', 'Exit_RSI_75')
+    metrics_with = calculate_metrics(trades_with_ftd, df_with_ftd)
+    
+    # Run without FTD
+    df_no_ftd, trades_no_ftd = run_backtest(df, 'Entry_10_No_FTD', 'Exit_RSI_75')
+    metrics_no_ftd = calculate_metrics(trades_no_ftd, df_no_ftd)
+    
+    print(f"\nWith FTD:")
+    print(f"  Trades: {metrics_with['Num_Trades']}, Return: {metrics_with['Total_Return']:.2f}%, PF: {metrics_with['Profit_Factor']:.2f}, Win Rate: {metrics_with['Win_Rate']:.1f}%")
+    
+    print(f"Without FTD:")
+    print(f"  Trades: {metrics_no_ftd['Num_Trades']}, Return: {metrics_no_ftd['Total_Return']:.2f}%, PF: {metrics_no_ftd['Profit_Factor']:.2f}, Win Rate: {metrics_no_ftd['Win_Rate']:.1f}%")
+    
+    # Create comparison plot
+    plt.figure(figsize=(14, 8))
+    plt.yscale('log')
+    
+    dates = df['Date']
+    plt.plot(dates, df_with_ftd['Cumulative_Strategy_Return'], label='Entry_10_Exit_RSI_75 - With FTD', linewidth=1.5, color='blue')
+    plt.plot(dates, df_no_ftd['Cumulative_Strategy_Return'], label='Entry_10_Exit_RSI_75 - Without FTD', linewidth=1.5, color='red')
+    
+    plt.xlabel('Date', fontsize=12)
+    plt.ylabel('Cumulative Return (Log Scale)', fontsize=12)
+    plt.title('FTD Comparison: Entry_10_Exit_RSI_75 With vs Without FTD', fontsize=14)
+    plt.legend(loc='upper left', fontsize=10)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
+    plt.savefig('ftd_comparison.png', dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    print(f"\nComparison chart saved to ftd_comparison.png")
+    
+    return df_with_ftd['Cumulative_Strategy_Return'], df_no_ftd['Cumulative_Strategy_Return']
+
+
 def main():
     print("=" * 60)
     print("FTD Strategy - Enhanced Exit Analysis (45 strategies)")
@@ -696,6 +748,9 @@ def main():
     
     # Create performance plot (top 5 by profit factor) - ftd_performance2.png
     plot_performance(equity_curves, results, 'ftd_performance2.png')
+    
+    # Run comparison
+    run_comparison(df)
     
     print("\n" + "=" * 60)
     print("Analysis Complete!")
