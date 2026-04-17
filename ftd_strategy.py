@@ -167,17 +167,19 @@ def entry_condition_6(df):
 
 
 def entry_condition_7(df):
-    """Entry 7: Volume Spike - Volume > 1.5x average after RSI oversold"""
+    """Entry 7: Volume Spike - RSI < 30 + FTD + Volume > 1.5x average"""
     rsi_oversold = df['RSI'] < 30
+    ftd = (df['IBS'] > 0.5) & (df['Daily_Return'] > 0.01)
     volume_spike = df['Volume_Ratio'] > 1.5
-    return rsi_oversold & volume_spike
+    return rsi_oversold & ftd & volume_spike
 
 
 def entry_condition_8(df):
-    """Entry 8: Gap Up - Gap up > 0.5% after RSI oversold"""
+    """Entry 8: Gap Up - RSI < 30 + FTD + Gap up > 0.5%"""
     rsi_oversold = df['RSI'] < 30
+    ftd = (df['IBS'] > 0.5) & (df['Daily_Return'] > 0.01)
     gap_up = df['Gap'] > 0.005
-    return rsi_oversold & gap_up
+    return rsi_oversold & ftd & gap_up
 
 
 def entry_condition_9(df):
