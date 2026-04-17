@@ -237,7 +237,21 @@ def entry_condition_14(df):
 
 
 def entry_condition_15(df):
-    """Entry 15: Wide Bar - Large green bar (>1.5%) after RSI oversold"""
+    """Entry 15: Wide Bar - RSI < 30 + FTD + Large green bar (>1.5%)"""
+    rsi_oversold = df['RSI'] < 30
+    ftd = (df['IBS'] > 0.5) & (df['Daily_Return'] > 0.01)
+    wide_bar = df['Daily_Return'] > 0.015
+    return rsi_oversold & ftd & wide_bar
+
+
+# No FTD versions
+def entry_condition_1_no_ftd(df):
+    """Entry 1 No FTD: RSI < 30 only"""
+    return df['RSI'] < 30
+
+
+def entry_condition_15_no_ftd(df):
+    """Entry 15 No FTD: RSI < 30 + Wide bar (>1.5%)"""
     rsi_oversold = df['RSI'] < 30
     wide_bar = df['Daily_Return'] > 0.015
     return rsi_oversold & wide_bar
@@ -487,16 +501,40 @@ def calculate_metrics(df_trades, df_full):
     }
 
 
-def run_all_strategies(df):
-    """Run all 45 strategy combinations (5 top entries x 9 exits)"""
+def run_all_strategies(df, entry_prefix='Entry', use_ftd=True):
+    """Run all strategy combinations with or without FTD criteria"""
     results = []
     equity_curves = {}
-    dates = df['Date']  # Store dates for plotting
+    dates = df['Date']
     
-    # Top 5 entries from prior analysis (all with FTD criteria)
+    # Get entries - map with or without FTD
+    if use_ftd:
+        entry_map = {
+            'Entry_1': entry_condition_1,
+            'Entry_5': entry_condition_5,
+            'Entry_7': entry_condition_7,
+            'Entry_8': entry_condition_8,
+            'Entry_10': entry_condition_10,
+            'Entry_15': entry_condition_15,
+        }
+    else:
+        # No FTD versions - remove FTD from each entry
+        entry_map = {
+            'Entry_1': lambda df: entry_condition_1_no_ftd(df),
+            'Entry_5': lambda df: (df['RSI'] < 40),
+            'Entry_7': lambda df: (df['RSI'] < 30) & (df['Volume_Ratio'] > 1.5),
+            'Entry_8': lambda df: (df['RSI'] < 30) & (df['Gap'] > 0.005),
+            'Entry_10': lambda df: (df['RSI'] < 30) & (df['Close'] > df['MA_200']),
+            'Entry_15': lambda df: entry_condition_15_no_ftd(df),
+        }
+        # Register them in ENTRY_CONDITIONS
+        for name, func in entry_map.items():
+            ENTRY_CONDITIONS[name] = func
+    
+    # Top 5 entries
     top_entries = ['Entry_10', 'Entry_15', 'Entry_7', 'Entry_8', 'Entry_5']
     
-    # All 9 exit variations (removed Target)
+    # All 9 exit variations
     exit_names = list(EXIT_CONDITIONS.keys())
     
     for entry_name in top_entries:
@@ -599,6 +637,38 @@ def create_rules_table():
     ]
     
     return pd.DataFrame(entry_rules), pd.DataFrame(rsi_exit_rules + new_exit_rules)
+
+
+def save_to_excel_comparison(df_results_ftd, df_results_no_ftd, entry_rules, exit_rules, filename='ftd_table2.xlsx'):
+    """Save FTD vs No-FTD comparison to Excel with two performance sheets"""
+    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+        # Write WITH FTD sheet
+        df_results_ftd.to_excel(writer, sheet_name='perf_with_FTD', index=False)
+        
+        # Write WITHOUT FTD sheet
+        df_results_no_ftd.to_excel(writer, sheet_name='perf_no_FTD', index=False)
+        
+        # Write entry rules sheet
+        entry_rules.to_excel(writer, sheet_name='Entries', index=False)
+        
+        # Write exit rules sheet
+        exit_rules.to_excel(writer, sheet_name='Exits', index=False)
+        
+        # Format sheets
+        from openpyxl.styles import Font, Alignment, PatternFill
+        
+        header_font = Font(bold=True, color='FFFFFF')
+        header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+        header_alignment = Alignment(horizontal='center', vertical='center')
+        
+        for sheet_name in ['perf_with_FTD', 'perf_no_FTD', 'Entries', 'Exits']:
+            sheet = writer.sheets[sheet_name]
+            for cell in sheet[1]:
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = header_alignment
+        
+        print(f"Excel file saved to {filename}")
 
 
 def save_to_excel(df_results, entry_rules, exit_rules, filename='ftd_table2.xlsx'):
@@ -737,22 +807,47 @@ def run_comparison(df):
 
 def main():
     print("=" * 60)
-    print("FTD Strategy - Enhanced Exit Analysis (45 strategies)")
+    print("FTD Strategy - FTD vs No-FTD Comparison")
     print("=" * 60)
     
     # Download data
     df = download_spy_data()
     
-    # Run all strategies
-    results, equity_curves = run_all_strategies(df)
+    # Run with FTD
+    print("\n--- Running strategies WITH FTD ---")
+    results_ftd, equity_curves_ftd = run_all_strategies(df.copy(), use_ftd=True)
+    df_results_ftd = create_performance_table(results_ftd)
     
-    # Create and display performance table (sorted by profit factor)
-    df_results = create_performance_table(results)
-    df_results_by_pf = df_results.sort_values('Profit_Factor', ascending=False)
+    # Run without FTD  
+    print("\n--- Running strategies WITHOUT FTD ---")
+    results_no_ftd, equity_curves_no_ftd = run_all_strategies(df.copy(), use_ftd=False)
+    df_results_no_ftd = create_performance_table(results_no_ftd)
+    
+    # Sort both by profit factor
+    df_results_ftd = df_results_ftd.sort_values('Profit_Factor', ascending=False)
+    df_results_no_ftd = df_results_no_ftd.sort_values('Profit_Factor', ascending=False)
+    
     print("\n" + "=" * 60)
-    print("Performance Table (sorted by Profit Factor)")
+    print("Performance Table WITH FTD (sorted by Profit Factor)")
     print("=" * 60)
-    print(df_results_by_pf.to_string(index=False))
+    print(df_results_ftd.to_string(index=False))
+    
+    print("\n" + "=" * 60)
+    print("Performance Table WITHOUT FTD (sorted by Profit Factor)")
+    print("=" * 60)
+    print(df_results_no_ftd.to_string(index=False))
+    
+    # Create rules tables
+    entry_rules, exit_rules = create_rules_table()
+    
+    # Save to Excel with both sheets
+    save_to_excel_comparison(df_results_ftd, df_results_no_ftd, entry_rules, exit_rules, 'ftd_table2.xlsx')
+    
+    print("\n" + "=" * 60)
+    print("Analysis Complete!")
+    print("=" * 60)
+    
+    return df_results_ftd, df_results_no_ftd
     
     # Create rules tables
     entry_rules, exit_rules = create_rules_table()
