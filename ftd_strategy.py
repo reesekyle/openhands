@@ -11,7 +11,7 @@ TOP 5 ENTRY VARIATIONS (from prior analysis) - All with FTD criteria:
 4. Entry_8: Gap Up - RSI < 30 + FTD + Gap up > 0.5%
 5. Entry_5: RSI < 40 + FTD (IBS > 0.5, any positive return)
 
-EXIT VARIATIONS (10 total):
+EXIT VARIATIONS (9 total - removed Target):
 RSI Threshold Variations (5):
 - Exit_RSI_55: Exit when RSI > 55
 - Exit_RSI_60: Exit when RSI > 60
@@ -19,14 +19,13 @@ RSI Threshold Variations (5):
 - Exit_RSI_70: Exit when RSI > 70
 - Exit_RSI_75: Exit when RSI > 75
 
-New Exit Methodologies (5):
+New Exit Methodologies (4):
 - Exit_Time_3: Hold for 3 bars
 - Exit_Time_10: Hold for 10 bars
 - Exit_RSI_Oversold: Exit when RSI goes back below 30
 - Exit_MA_Cross: Exit when price crosses below 20-day MA
-- Exit_Target: Exit when profit target of 3% is reached
 
-Total: 50 strategy variations (5 entries x 10 exits)
+Total: 45 strategy variations (5 entries x 9 exits)
 """
 
 import pandas as pd
@@ -261,7 +260,7 @@ def exit_condition_rsi_75(df, threshold=75):
     return df['RSI'] > threshold
 
 
-# New Exit Methodologies (5)
+# New Exit Methodologies (4) - Removed Target exit
 def exit_condition_time_3(df, hold_bars=3):
     """Exit: Hold for N bars"""
     return hold_bars
@@ -282,11 +281,6 @@ def exit_condition_ma_cross(df, ma_col='MA_20'):
     return df['Close'] < df[ma_col]
 
 
-def exit_condition_target(df, target=0.03):
-    """Exit: Profit target reached (handled in backtest loop)"""
-    return target
-
-
 # Exit condition mapping
 EXIT_CONDITIONS = {
     'Exit_RSI_55': {'func': exit_condition_rsi_55, 'params': {'threshold': 55}, 'type': 'rsi'},
@@ -298,7 +292,6 @@ EXIT_CONDITIONS = {
     'Exit_Time_10': {'func': exit_condition_time_10, 'params': {'hold_bars': 10}, 'type': 'time'},
     'Exit_RSI_Oversold': {'func': exit_condition_rsi_oversold, 'params': {'threshold': 30}, 'type': 'rsi_low'},
     'Exit_MA_Cross': {'func': exit_condition_ma_cross, 'params': {'ma_col': 'MA_20'}, 'type': 'ma'},
-    'Exit_Target': {'func': exit_condition_target, 'params': {'target': 0.03}, 'type': 'target'},
 }
 
 
@@ -380,12 +373,6 @@ def run_backtest(df, entry_name, exit_name):
                 # MA cross exit
                 ma_col = exit_params.get('ma_col', 'MA_20')
                 if df['Close'].iloc[i] < df[ma_col].iloc[i]:
-                    should_exit = True
-            elif exit_type == 'target':
-                # Profit target exit
-                target = exit_params.get('target', 0.03)
-                current_return = (df['Close'].iloc[i] / entry_price) - 1
-                if current_return >= target:
                     should_exit = True
             
             if should_exit:
@@ -487,7 +474,7 @@ def calculate_metrics(df_trades, df_full):
 
 
 def run_all_strategies(df):
-    """Run all 50 strategy combinations (5 top entries x 10 exits)"""
+    """Run all 45 strategy combinations (5 top entries x 9 exits)"""
     results = []
     equity_curves = {}
     dates = df['Date']  # Store dates for plotting
@@ -495,7 +482,7 @@ def run_all_strategies(df):
     # Top 5 entries from prior analysis (all with FTD criteria)
     top_entries = ['Entry_10', 'Entry_15', 'Entry_7', 'Entry_8', 'Entry_5']
     
-    # All 10 exit variations
+    # All 9 exit variations (removed Target)
     exit_names = list(EXIT_CONDITIONS.keys())
     
     for entry_name in top_entries:
@@ -589,13 +576,12 @@ def create_rules_table():
         {'Strategy': 'Exit_RSI_75', 'Description': 'Exit when RSI > 75', 'Category': 'RSI Threshold'},
     ]
     
-    # Exit rules - new methodologies (5)
+    # Exit rules - new methodologies (4 - removed Target)
     new_exit_rules = [
         {'Strategy': 'Exit_Time_3', 'Description': 'Hold for 3 bars then exit', 'Category': 'Time-based'},
         {'Strategy': 'Exit_Time_10', 'Description': 'Hold for 10 bars then exit', 'Category': 'Time-based'},
         {'Strategy': 'Exit_RSI_Oversold', 'Description': 'Exit when RSI goes back below 30 (momentum fades)', 'Category': 'RSI Reversal'},
         {'Strategy': 'Exit_MA_Cross', 'Description': 'Exit when price crosses below 20-day MA', 'Category': 'MA Cross'},
-        {'Strategy': 'Exit_Target', 'Description': 'Exit when profit target of 3% is reached', 'Category': 'Profit Target'},
     ]
     
     return pd.DataFrame(entry_rules), pd.DataFrame(rsi_exit_rules + new_exit_rules)
@@ -685,7 +671,7 @@ def save_to_excel(df_results, entry_rules, exit_rules, filename='ftd_table2.xlsx
 
 def main():
     print("=" * 60)
-    print("FTD Strategy - Enhanced Exit Analysis (50 strategies)")
+    print("FTD Strategy - Enhanced Exit Analysis (45 strategies)")
     print("=" * 60)
     
     # Download data
