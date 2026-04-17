@@ -332,6 +332,9 @@ def run_backtest(df, entry_name, exit_name):
         df_trades: DataFrame with trade signals
         equity_curve: Series with cumulative equity
     """
+    # Work on a copy to avoid modifying original data
+    df = df.copy()
+    
     entry_func = ENTRY_CONDITIONS[entry_name]
     exit_config = EXIT_CONDITIONS[exit_name]
     
@@ -684,12 +687,15 @@ def run_comparison(df):
     print("FTD Comparison: Entry_10_Exit_RSI_75 with vs without FTD")
     print("=" * 60)
     
-    # Run with FTD
-    df_with_ftd, trades_with_ftd = run_backtest(df, 'Entry_10', 'Exit_RSI_75')
+    # Make fresh copies to avoid any data contamination
+    df_fresh = df.copy()
+    
+    # Run with FTD - Entry 10 includes FTD criteria
+    df_with_ftd, trades_with_ftd = run_backtest(df_fresh.copy(), 'Entry_10', 'Exit_RSI_75')
     metrics_with = calculate_metrics(trades_with_ftd, df_with_ftd)
     
-    # Run without FTD
-    df_no_ftd, trades_no_ftd = run_backtest(df, 'Entry_10_No_FTD', 'Exit_RSI_75')
+    # Run without FTD - Entry 10 No FTD does not include FTD criteria  
+    df_no_ftd, trades_no_ftd = run_backtest(df_fresh.copy(), 'Entry_10_No_FTD', 'Exit_RSI_75')
     metrics_no_ftd = calculate_metrics(trades_no_ftd, df_no_ftd)
     
     print(f"\nWith FTD:")
@@ -698,21 +704,27 @@ def run_comparison(df):
     print(f"Without FTD:")
     print(f"  Trades: {metrics_no_ftd['Num_Trades']}, Return: {metrics_no_ftd['Total_Return']:.2f}%, PF: {metrics_no_ftd['Profit_Factor']:.2f}, Win Rate: {metrics_no_ftd['Win_Rate']:.1f}%")
     
-    # Create comparison plot
-    plt.figure(figsize=(14, 8))
-    plt.yscale('log')
+    # Create comparison plot with clear distinction
+    fig, ax = plt.subplots(figsize=(14, 8))
+    ax.set_yscale('log')
     
     dates = df['Date']
-    plt.plot(dates, df_with_ftd['Cumulative_Strategy_Return'], label='Entry_10_Exit_RSI_75 - With FTD', linewidth=1.5, color='blue')
-    plt.plot(dates, df_no_ftd['Cumulative_Strategy_Return'], label='Entry_10_Exit_RSI_75 - Without FTD', linewidth=1.5, color='red')
     
-    plt.xlabel('Date', fontsize=12)
-    plt.ylabel('Cumulative Return (Log Scale)', fontsize=12)
-    plt.title('FTD Comparison: Entry_10_Exit_RSI_75 With vs Without FTD', fontsize=14)
-    plt.legend(loc='upper left', fontsize=10)
-    plt.grid(True, alpha=0.3)
+    # Plot with FTD - blue line
+    curve_ftd = df_with_ftd['Cumulative_Strategy_Return'].values
+    ax.plot(dates, curve_ftd, label='Entry_10_Exit_RSI_75 - With FTD', linewidth=2, color='blue')
+    
+    # Plot without FTD - red line
+    curve_no_ftd = df_no_ftd['Cumulative_Strategy_Return'].values
+    ax.plot(dates, curve_no_ftd, label='Entry_10_Exit_RSI_75 - Without FTD', linewidth=2, color='red')
+    
+    ax.set_xlabel('Date', fontsize=12)
+    ax.set_ylabel('Cumulative Return (Log Scale)', fontsize=12)
+    ax.set_title('FTD Comparison: Entry_10_Exit_RSI_75 With vs Without FTD', fontsize=14)
+    ax.legend(loc='upper left', fontsize=10)
+    ax.grid(True, alpha=0.3)
+    
     plt.tight_layout()
-    
     plt.savefig('ftd_comparison.png', dpi=150, bbox_inches='tight')
     plt.close()
     
