@@ -53,24 +53,27 @@ def get_treasury_yields():
         return None, None
 
 def get_etf_data(tickers, start_date, end_date):
-    """Download ETF data - handles multi-index columns from yfinance"""
+    """Download ETF data with adjusted close prices - handles multi-index columns from yfinance"""
     all_data = {}
     
     for ticker in tickers:
         try:
-            df = yf.download(ticker, start=start_date, end=end_date, progress=False)
+            df = yf.download(ticker, start=start_date, end=end_date, progress=False, auto_adjust=False)
             if not df.empty:
-                # Handle multi-index columns from yfinance
+                # Use Adjusted Close prices (accounting for splits/dividends)
                 if isinstance(df.columns, pd.MultiIndex):
-                    # Extract Close prices
-                    if ('Close', ticker) in df.columns:
+                    # Extract Adj Close prices
+                    if ('Adj Close', ticker) in df.columns:
+                        close_prices = df[('Adj Close', ticker)]
+                    elif 'Adj Close' in df.columns.get_level_values(0):
+                        close_prices = df['Adj Close'].iloc[:, 0] if len(df['Adj Close'].shape) > 1 else df['Adj Close']
+                    elif ('Close', ticker) in df.columns:
                         close_prices = df[('Close', ticker)]
-                    elif 'Close' in df.columns.get_level_values(0):
-                        close_prices = df['Close'].iloc[:, 0] if len(df['Close'].shape) > 1 else df['Close']
                     else:
-                        continue
+                        close_prices = df['Close'].iloc[:, 0] if len(df['Close'].shape) > 1 else df['Close']
                 else:
-                    close_prices = df['Close']
+                    # Use Adj Close if available, else Close
+                    close_prices = df.get('Adj Close', df.get('Close', df.iloc[:, 0]))
                 
                 all_data[ticker] = close_prices
         except Exception as e:
@@ -292,38 +295,73 @@ def create_signals_dataframe(signals):
     return df
 
 def calculate_portfolio_equity(signals_df, price_data):
-    """Calculate cumulative portfolio equity"""
+    """Calculate cumulative portfolio equity using adjusted close prices
+    
+    - Signal % allocated to IEF (intermediate-term Treasuries)
+    - (100 - Signal) % allocated to BIL (3-month Treasuries/cash)
+    - Uses adjusted close prices for accurate return calculation
+    """
     equity_data = []
     
     for i in range(len(signals_df) - 1):
         current_date = signals_df.index[i]
         next_date = signals_df.index[i + 1] if i + 1 < len(signals_df) else signals_df.index[-1]
         
-        # Get signal at current period
+        # Signal percentage to IEF (0-100%)
         signal_pct = signals_df.loc[current_date, 'final_signal'] / 100
         
-        # Get returns for the period
-        # Signal allocation goes to IEF
-        # Remainder goes to cash (BIL return)
-        
+        # Get returns for the period using adjusted close prices
         if 'IEF' in price_data.columns and 'BIL' in price_data.columns:
             ief_prices = price_data['IEF'].dropna()
             bil_prices = price_data['BIL'].dropna()
             
-            # Find period returns
-            if current_date in ief_prices.index and next_date in ief_prices.index:
-                ief_start = ief_prices.loc[current_date]
-                ief_end = ief_prices.loc[next_date]
-                ief_return = (ief_end - ief_start) / ief_start
-                
-                bil_start = bil_prices.loc[current_date]
-                bil_end = bil_prices.loc[next_date]
-                bil_return = (bil_end - bil_start) / bil_start
-                
-                # Portfolio return: weighted by signal
-                portfolio_return = signal_pct * ief_return + (1 - signal_pct) * bil_return
+            # Find prices at period start and end
+            # Use index matching (find closest dates if exact not available)
+            ief_start_price = None
+            ief_end_price = None
+            bil_start_price = None
+            bil_end_price = None
+            
+            # Get IEF prices
+            for idx in ief_prices.index:
+                if idx >= current_date:
+                    ief_start_price = ief_prices.loc[idx]
+                    break
+            for idx in ief_prices.index:
+                if idx >= next_date:
+                    ief_end_price = ief_prices.loc[idx]
+                    break
+            
+            # If next_date is the same or before current, use last available
+            if ief_end_price is None:
+                ief_end_price = ief_prices.iloc[-1]
+            
+            # Get BIL prices
+            for idx in bil_prices.index:
+                if idx >= current_date:
+                    bil_start_price = bil_prices.loc[idx]
+                    break
+            for idx in bil_prices.index:
+                if idx >= next_date:
+                    bil_end_price = bil_prices.loc[idx]
+                    break
+            
+            if bil_end_price is None:
+                bil_end_price = bil_prices.iloc[-1]
+            
+            # Calculate returns
+            if ief_start_price and ief_end_price and ief_start_price != 0:
+                ief_return = (ief_end_price - ief_start_price) / ief_start_price
             else:
-                portfolio_return = 0
+                ief_return = 0
+                
+            if bil_start_price and bil_end_price and bil_start_price != 0:
+                bil_return = (bil_end_price - bil_start_price) / bil_start_price
+            else:
+                bil_return = 0
+            
+            # Portfolio return: weighted by signal
+            portfolio_return = signal_pct * ief_return + (1 - signal_pct) * bil_return
         else:
             portfolio_return = 0
         
