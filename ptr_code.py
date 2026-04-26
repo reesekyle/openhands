@@ -19,7 +19,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Configuration
-START_DATE = "2010-01-01"  # Need ~10 years of data for z-score calculation
+START_DATE = "2006-01-01"  # DBC inception
 END_DATE = datetime.now().strftime("%Y-%m-%d")
 
 # ETF tickers
@@ -165,9 +165,11 @@ def calculate_signals(month_end_data, daily_data):
     # Get month-end dates as list
     month_dates = pd.to_datetime(month_end_data.index).tolist()
     
-    # Need 120 months (10 years) of data for z-score, start after that
+    # Need minimum 24 months of data for z-score calculation
+    min_months = 24
+    
     for i, current_date in enumerate(month_dates):
-        if i < 120:  # Skip first 10 years
+        if i < min_months:  # Skip first 24 months (2 years)
             continue
         
         # Get all daily data up to current month end
@@ -197,13 +199,10 @@ def calculate_signals(month_end_data, daily_data):
             bil_12m_ret = (bil.iloc[-1] - bil.iloc[-252]) / bil.iloc[-252]
             excess_spy = spy_12m_ret - bil_12m_ret
             
-            # Calculate z-score from historical data (past 10 years of monthly signals)
-            # We need to get historical excess returns for z-score calculation
-            # Look at all past months up to 120 months ago
-            if i >= 120:  # We have at least 10 years of history now
-                # Get signals from all previous months
+            # Calculate z-score from historical data (look back at min_months of history)
+            if i >= min_months:
                 hist_excess = []
-                for j in range(120, i):
+                for j in range(min_months, i):
                     past_date = month_dates[j]
                     past_data = daily_data[daily_data.index <= past_date]
                     if len(past_data) > 252:
@@ -214,7 +213,7 @@ def calculate_signals(month_end_data, daily_data):
                             p_bil = (past_bil.iloc[-1] - past_bil.iloc[-252]) / past_bil.iloc[-252]
                             hist_excess.append(p_spy - p_bil)
                 
-                if len(hist_excess) > 30:
+                if len(hist_excess) > 12:
                     zscore = calculate_zscore(excess_spy, pd.Series(hist_excess))
                     equity_signal = max(-1, min(1, -1 * zscore))
                     signals['equity_returns'].append(equity_signal)
@@ -231,9 +230,8 @@ def calculate_signals(month_end_data, daily_data):
         if len(dbc) > 252:
             dbc_12m_ret = (dbc.iloc[-1] - dbc.iloc[-252]) / dbc.iloc[-252]
             
-            # Historical DBC returns for z-score
             hist_dbc = []
-            for j in range(120, i):
+            for j in range(min_months, i):
                 past_date = month_dates[j]
                 past_data = daily_data[daily_data.index <= past_date]
                 past_dbc = past_data['DBC'].dropna()
@@ -241,7 +239,7 @@ def calculate_signals(month_end_data, daily_data):
                     p_dbc = (past_dbc.iloc[-1] - past_dbc.iloc[-252]) / past_dbc.iloc[-252]
                     hist_dbc.append(p_dbc)
             
-            if len(hist_dbc) > 30:
+            if len(hist_dbc) > 12:
                 zscore = calculate_zscore(dbc_12m_ret, pd.Series(hist_dbc))
                 commodity_signal = max(-1, min(1, -1 * zscore))
                 signals['commodity_returns'].append(commodity_signal)
@@ -256,9 +254,8 @@ def calculate_signals(month_end_data, daily_data):
             bil_ret = (bil.iloc[-1] - bil.iloc[-252]) / bil.iloc[-252]
             spread = spy_ret - bil_ret
             
-            # Historical spread for z-score
             hist_spread = []
-            for j in range(120, i):
+            for j in range(min_months, i):
                 past_date = month_dates[j]
                 past_data = daily_data[daily_data.index <= past_date]
                 past_spy = past_data['SPY'].dropna()
@@ -268,7 +265,7 @@ def calculate_signals(month_end_data, daily_data):
                     p_bil = (past_bil.iloc[-1] - past_bil.iloc[-252]) / past_bil.iloc[-252]
                     hist_spread.append(p_spy - p_bil)
             
-            if len(hist_spread) > 30:
+            if len(hist_spread) > 12:
                 zscore = calculate_zscore(spread, pd.Series(hist_spread))
                 yield_signal = max(-1, min(1, zscore))
                 signals['yield_spread'].append(yield_signal)
